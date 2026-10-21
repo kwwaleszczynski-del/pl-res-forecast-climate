@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poland Wind &amp; Solar Outlook</title>
+<meta name="description" content="Probabilistic 7-day wind and solar generation forecast for Poland from open ensemble weather forecasts, verified against PSE data, with an ERA5 resource climatology.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='11' cy='11' r='6' fill='%23eb6834'/%3E%3Cpath d='M20 30V15M20 15l-6-6M20 15l8-2M20 15l-1 9' stroke='%232a78d6' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --wind: #2a78d6; --pv: #eb6834; --obs: #0b0b0b;
+  --pos: #2a78d6; --neg: #e34948; --mid: #f0efec;
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; --good-text: #006300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --wind: #3987e5; --pv: #d95926; --obs: #f0efec;
+    --pos: #3987e5; --neg: #e66767; --mid: #383835; --good-text: #0ca30c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --wind: #3987e5; --pv: #d95926; --obs: #f0efec;
+  --pos: #3987e5; --neg: #e66767; --mid: #383835; --good-text: #0ca30c;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+header { padding: 32px 0 8px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; font-weight: 650; letter-spacing: -0.01em; }
+h2 { font-size: 20px; margin: 0 0 4px; font-weight: 620; }
+h3 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+p { margin: 0 0 10px; }
+.lede { color: var(--ink-2); max-width: 760px; }
+.meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; }
+.meta a { color: inherit; }
+section { margin: 28px 0; }
+.sub { color: var(--ink-2); font-size: 14px; margin-bottom: 14px; max-width: 820px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.tile .label { color: var(--ink-2); font-size: 13px; }
+.tile .value { font-size: 30px; font-weight: 620; line-height: 1.2; margin: 4px 0 2px; }
+.tile .unit { font-size: 16px; font-weight: 500; color: var(--ink-2); margin-left: 3px; }
+.tile .note { color: var(--muted); font-size: 12.5px; }
+.key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 2px 8px 2px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink); }
+.badge svg { width: 12px; height: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.chart { width: 100%; height: 300px; }
+.chart.tall { height: 340px; }
+.chart.map { height: 330px; }
+.chart.small { height: 240px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--ink-2); margin: 2px 0 6px; }
+.legend .sw { display: inline-block; width: 16px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 600; font-size: 12.5px; }
+th:first-child, td:first-child { text-align: left; }
+.scroll { overflow-x: auto; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+.seg button { background: transparent; border: 0; padding: 5px 12px; font: inherit; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--grid); color: var(--ink); font-weight: 600; }
+details summary { cursor: pointer; color: var(--ink-2); font-size: 13.5px; }
+.note-box { color: var(--ink-2); font-size: 13.5px; padding: 12px 14px; border: 1px dashed var(--axis); border-radius: 10px; }
+.status { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.method { columns: 2 340px; column-gap: 32px; color: var(--ink-2); font-size: 14px; }
+.method h3 { color: var(--ink); break-after: avoid; margin-top: 4px; }
+.method p, .method ul { break-inside: avoid; }
+.method ul { padding-left: 18px; margin: 0 0 12px; }
+footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 40px; border-top: 1px solid var(--grid); margin-top: 32px; }
+footer a { color: inherit; }
+.toggle { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--ink-2); border-radius: 8px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.toprow { display: flex; align-items: flex-start; gap: 12px; }
+@media (max-width: 560px) { h1 { font-size: 23px; } .tile .value { font-size: 26px; } .chart.map { height: 280px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="toprow">
+    <div>
+      <h1>Wind &amp; solar outlook for Poland</h1>
+      <p class="lede">A probabilistic forecast of national wind and solar generation for the next seven days, built from
+      open ensemble weather forecasts and calibrated against the transmission system operator's data, plus the long-term
+      resource climate from the ERA5 reanalysis.</p>
+    </div>
+    <button class="toggle" id="theme" type="button" aria-label="Toggle dark mode">Dark mode</button>
+  </div>
+  <div class="meta" id="meta"></div>
+  <div class="status" id="status"></div>
+</header>
+
+<section id="kpi">
+  <h2>Tomorrow</h2>
+  <div class="sub" id="kpi-sub"></div>
+  <div class="tiles" id="tiles"></div>
+</section>
+
+<section id="outlook">
+  <h2>Next seven days</h2>
+  <div class="sub">Median forecast with 50 % and 80 % ranges; the line on the left is the generation reported by PSE.
+  Hours are local time (Europe/Warsaw), values are hourly means.</div>
+  <div class="grid2">
+    <div class="card"><h3>Solar</h3><div class="legend" id="leg-pv"></div><div class="chart tall" id="fan-pv"></div></div>
+    <div class="card"><h3>Wind</h3><div class="legend" id="leg-wind"></div><div class="chart tall" id="fan-wind"></div></div>
+  </div>
+  <div class="card scroll" style="margin-top:12px"><table id="daily"></table></div>
+</section>
+
+<section id="verification">
+  <h2>How good is it?</h2>
+  <div class="sub" id="verif-sub"></div>
+  <div class="grid2">
+    <div class="card"><h3>Solar, day-ahead forecast vs PSE</h3><div class="legend" id="leg-rpv"></div><div class="chart" id="recent-pv"></div></div>
+    <div class="card"><h3>Wind, day-ahead forecast vs PSE</h3><div class="legend" id="leg-rwind"></div><div class="chart" id="recent-wind"></div></div>
+  </div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><h3>Skill by lead time</h3><div class="legend" id="leg-skill"></div><div class="chart small" id="skill"></div></div>
+    <div class="card scroll"><h3 id="hc-title">Hindcast scores</h3><table id="hc-table"></table></div>
+  </div>
+  <div class="card scroll" style="margin-top:12px" id="live-box"></div>
+</section>
+
+<section id="climate">
+  <h2>Resource climate</h2>
+  <div class="sub" id="clim-sub"></div>
+  <div class="tiles" id="clim-tiles"></div>
+  <div id="clim-body">
+  <div style="margin-top:12px">
+    <div class="seg" role="group" aria-label="Map period"><button type="button" id="mp-month" aria-pressed="true">Last month</button><button type="button" id="mp-ytd" aria-pressed="false">Year to date</button></div>
+    <div class="grid2">
+      <div class="card"><h3 id="map-ghi-title">Solar irradiance anomaly</h3><div class="chart map" id="map-ghi"></div></div>
+      <div class="card"><h3 id="map-wind-title">Wind speed anomaly (100 m)</h3><div class="chart map" id="map-wind"></div></div>
+    </div>
+    <details class="card scroll" style="margin-top:12px"><summary>Map values as a table</summary><table id="map-table"></table></details>
+  </div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><h3>Monthly solar irradiance vs 1991&ndash;2020</h3><div class="chart small" id="mon-ghi"></div></div>
+    <div class="card"><h3>Monthly wind speed vs 1991&ndash;2020</h3><div class="chart small" id="mon-wind"></div></div>
+  </div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><h3>Annual solar yield, 1991&ndash;2025</h3><div class="sub" id="exc-pv" style="margin-bottom:4px"></div><div class="chart small" id="ann-pv"></div></div>
+    <div class="card"><h3>Annual wind yield, 1991&ndash;2025</h3><div class="sub" id="exc-wind" style="margin-bottom:4px"></div><div class="chart small" id="ann-wind"></div></div>
+  </div>
+  </div>
+</section>
+
+<section id="method">
+  <h2>Method</h2>
+  <div class="method card">
+    <h3>Weather</h3>
+    <p>Ensemble forecasts from <b>ECMWF IFS ENS</b> (51 members), <b>DWD ICON-EPS</b> (40) and <b>NOAA GEFS</b> (31),
+    fetched every morning from Open-Meteo on a 1&deg; grid of 48 points covering Poland. GEFS has no hub-height wind and
+    is used for solar only; ICON-EPS wind ends after about five days.</p>
+    <h3>Weather to power</h3>
+    <ul>
+      <li><b>Solar</b>: pvlib. Hourly irradiance is split into direct and diffuse (Erbs), transposed onto a mix of
+      south-facing and east/west planes (Hay-Davies), corrected for incidence angle and cell temperature (Faiman) and
+      converted with a PVWatts-style model with inverter clipping.</li>
+      <li><b>Wind</b>: wind speed at 80/100 m is shifted to a 100 m hub height and passed through a generic turbine
+      curve smoothed over the spread of speeds within a grid cell (multi-turbine power curve).</li>
+      <li>Grid points are weighted by public installed capacity per voivodeship: URE register (wind and licensed PV)
+      plus about 14 GW of rooftop PV distributed by population. No individual plant locations are used.</li>
+    </ul>
+    <h3>Calibration</h3>
+    <p>For every model and lead day a regression maps the physical output onto PSE generation. It is refitted every
+    day on the last 60 days that were already observed, so it absorbs the fleet's growth, curtailment and model
+    biases. Errors of earlier out-of-sample forecasts, grouped by output level, give the forecast distribution; each
+    ensemble member is dressed with them, shrunk where the ensemble already spreads widely.</p>
+    <h3>Verification</h3>
+    <p>A rolling-origin hindcast replays the method on archived deterministic runs of the same three models
+    (Open-Meteo Previous Runs API) from 2024, with no look-ahead: each day only data available that morning are
+    used. Scores: MAE of the median, CRPS of the full distribution and the share of observations inside the 80 %
+    range. Archived ensemble members are not available, so the hindcast tests a three-member multi-model ensemble;
+    the live ensemble is verified from the archive of published forecasts as it grows.</p>
+    <h3>Resource climate</h3>
+    <p>Daily ERA5 irradiance and 100 m wind on the same grid since 1991. Anomalies are relative to 1991&ndash;2020;
+    national figures weight the grid by installed capacity, maps are voivodeship means. Annual yields use daily
+    transfer functions derived from hourly ERA5 and the same power models, for today's fleet layout and generic
+    equipment, so the year-to-year spread is more meaningful than the absolute level.</p>
+    <h3>Limitations</h3>
+    <ul>
+      <li>National totals only; regional or plant-level accuracy is not the goal.</li>
+      <li>Curtailment and negative-price shutdowns are only learned statistically.</li>
+      <li>PSE solar figures include an estimate of rooftop generation and are revised.</li>
+      <li>The hindcast starts in mid-2024, so rare extremes are under-sampled.</li>
+    </ul>
+    <h3>Data and licences</h3>
+    <p>Weather: <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0), with model data from ECMWF (CC BY 4.0),
+    DWD and NOAA; reanalysis: Copernicus Climate Change Service ERA5 (contains modified Copernicus information);
+    generation: <a href="https://raporty.pse.pl/">PSE S.A.</a> reports; capacity: URE; population: GUS; borders:
+    Natural Earth. Not affiliated with any of these organisations.</p>
+  </div>
+</section>
+
+<footer>
+  <div id="foot"></div>
+</footer>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8"></script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "–" : Number(v).toLocaleString("en-GB", {minimumFractionDigits: d, maximumFractionDigits: d});
+const gw = (a) => a.map((v) => v === null ? null : v / 1000);
+const el = (tag, attrs = {}, text) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text !== undefined) e.textContent = text; return e; };
+const hasPlotly = () => typeof Plotly !== "undefined";
+function note(target, msg) { const t = $(target); t.replaceChildren(el("div", {class: "note-box"}, msg)); }
+function alpha(hex, a) { const h = hex.replace("#", ""); const n = parseInt(h, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
+function dayLabel(iso) { const d = new Date(iso + "T12:00:00"); return d.toLocaleDateString("en-GB", {weekday: "short", day: "numeric", month: "short"}); }
+function legend(id, items) {
+  const box = $(id); box.replaceChildren();
+  for (const [label, color, kind] of items) {
+    const s = el("span"); const sw = el("span", {class: kind === "line" ? "key" : "sw"});
+    sw.style.background = color; s.append(sw, document.createTextNode(label)); box.append(s);
+  }
+}
+
+function baseLayout(extra = {}) {
+  return Object.assign({
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: {family: "system-ui, -apple-system, Segoe UI, sans-serif", size: 12, color: css("--ink-2")},
+    margin: {l: 44, r: 12, t: 8, b: 36}, showlegend: false, hovermode: "x unified",
+    hoverlabel: {bgcolor: css("--surface"), bordercolor: css("--axis"), font: {color: css("--ink")}},
+    xaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), zeroline: false, tickfont: {color: css("--muted")}, showspikes: true, spikecolor: css("--axis"), spikethickness: 1, spikedash: "solid", spikemode: "across"},
+    yaxis: {gridcolor: css("--grid"), linecolor: css("--axis"), zeroline: false, tickfont: {color: css("--muted")}, rangemode: "tozero"},
+  }, extra);
+}
+const CFG = {displayModeBar: false, responsive: true};
+
+function header() {
+  const m = $("meta"); m.replaceChildren();
+  const gen = new Date(D.generated);
+  m.append(el("span", {}, "Updated " + gen.toLocaleString("en-GB", {timeZone: "Europe/Warsaw", dateStyle: "medium", timeStyle: "short"}) + " (Warsaw)"));
+  if (D.live && D.live.members) {
+    const n = Object.values(D.live.members).reduce((a, m) => a + Math.max(...Object.values(m)), 0);
+    m.append(el("span", {}, `${n} ensemble members`));
+  }
+  m.append(el("span", {}, `Installed: ${fmt(D.capacity_mw.pv / 1000, 1)} GW solar, ${fmt(D.capacity_mw.wind / 1000, 1)} GW wind`));
+  const a = el("a", {href: D.repo}, "Source code"); m.append(a);
+  const st = $("status"); st.replaceChildren();
+  if (D.stale_note) st.append(badge("warning", D.stale_note));
+  for (const [src, msg] of Object.entries(D.status || {})) {
+    const ok = msg.startsWith("ok");
+    st.append(badge(ok ? "good" : (msg.startsWith("failed") ? "critical" : "warning"), `${src}: ${msg}`));
+  }
+}
+
+function badge(kind, text) {
+  const b = el("span", {class: "badge"});
+  const icons = {good: "M3 8.5l3 3 7-7", warning: "M8 3v6M8 12v1", critical: "M4 4l8 8M12 4l-8 8"};
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c.setAttribute("cx", "8"); c.setAttribute("cy", "8"); c.setAttribute("r", "8"); c.setAttribute("fill", css("--" + kind));
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  p.setAttribute("d", icons[kind]); p.setAttribute("stroke", "#fff"); p.setAttribute("stroke-width", "2"); p.setAttribute("fill", "none"); p.setAttribute("stroke-linecap", "round");
+  svg.append(c, p); b.append(svg, document.createTextNode(text)); return b;
+}
+
+function tile(label, value, unit, noteText, extra) {
+  const t = el("div", {class: "card tile"});
+  t.append(el("div", {class: "label"}, label));
+  const v = el("div", {class: "value"}, value); if (unit) v.append(el("span", {class: "unit"}, unit));
+  t.append(v);
+  if (extra) t.append(extra);
+  if (noteText) t.append(el("div", {class: "note"}, noteText));
+  return t;
+}
+
+function kpis() {
+  const box = $("tiles"); box.replaceChildren();
+  if (!D.live) { note("tiles", "The live forecast could not be produced in the latest run."); return; }
+  const day = (D.live.daily || []).find((r) => r.lead === 1);
+  const risk = (D.live.risk || []).find((r) => r.lead === 1);
+  if (!day) { note("tiles", "No forecast for tomorrow in the latest run."); return; }
+  $("kpi-sub").textContent = `${dayLabel(day.day)}: median forecast with the 10–90 % range.`;
+  const time = day.pv_peak_time ? new Date(day.pv_peak_time).toLocaleTimeString("en-GB", {timeZone: "Europe/Warsaw", hour: "2-digit", minute: "2-digit"}) : "";
+  box.append(tile("Solar peak", fmt(day.pv_peak_mw_p50 / 1000), "GW", `10–90 %: ${fmt(day.pv_peak_mw_p10 / 1000)}–${fmt(day.pv_peak_mw_p90 / 1000)} GW, hour ending ${time}`));
+  box.append(tile("Solar energy", fmt(day.pv_mwh_p50 / 1000, 0), "GWh", `10–90 %: ${fmt(day.pv_mwh_p10 / 1000, 0)}–${fmt(day.pv_mwh_p90 / 1000, 0)} GWh`));
+  box.append(tile("Wind energy", fmt(day.wind_mwh_p50 / 1000, 0), "GWh", `10–90 %: ${fmt(day.wind_mwh_p10 / 1000, 0)}–${fmt(day.wind_mwh_p90 / 1000, 0)} GWh`));
+  if (risk) {
+    const p = risk.p_low * 100;
+    const level = p >= 50 ? ["critical", "High"] : p >= 20 ? ["warning", "Elevated"] : ["good", "Low"];
+    box.append(tile("Low wind + solar risk", fmt(p, 0), "%", `Chance that tomorrow is among the weakest 10 % of wind + solar days of the past year (mean below ${fmt(D.live.risk_threshold_mw / 1000)} GW).`, badge(level[0], level[1])));
+  }
+}
+
+function fanChart(tech, target, legendId) {
+  const L = D.live; const f = L.fan; const q = f[tech];
+  const color = css(tech === "pv" ? "--pv" : "--wind");
+  const traces = [
+    {x: f.times, y: gw(q.p10), mode: "lines", line: {width: 0}, hoverinfo: "skip"},
+    {x: f.times, y: gw(q.p90), mode: "lines", line: {width: 0}, fill: "tonexty", fillcolor: alpha(color, 0.12), hoverinfo: "skip"},
+    {x: f.times, y: gw(q.p25), mode: "lines", line: {width: 0}, hoverinfo: "skip"},
+    {x: f.times, y: gw(q.p75), mode: "lines", line: {width: 0}, fill: "tonexty", fillcolor: alpha(color, 0.24), hoverinfo: "skip"},
+    {x: f.times, y: gw(q.p50), mode: "lines", line: {width: 2, color}, name: "Median",
+     customdata: q.p10.map((v, i) => [v / 1000, q.p90[i] / 1000]),
+     hovertemplate: "<b>%{y:.2f} GW</b> median<br>10–90 %: %{customdata[0]:.2f}–%{customdata[1]:.2f} GW<extra></extra>"},
+  ];
+  if (L.actual) traces.push({x: L.actual.times, y: gw(L.actual[tech]), mode: "lines", line: {width: 2, color: css("--obs")}, name: "PSE", hovertemplate: "<b>%{y:.2f} GW</b> PSE<extra></extra>"});
+  const now = new Date().toLocaleString("sv-SE", {timeZone: "Europe/Warsaw"}).replace(" ", "T").slice(0, 16);
+  const first = (L.actual ? L.actual.times[0] : f.times[0]);
+  const inside = now >= first && now <= f.times[f.times.length - 1];
+  const layout = baseLayout({yaxis: Object.assign(baseLayout().yaxis, {title: {text: "GW", font: {size: 11}}}),
+    shapes: inside ? [{type: "line", x0: now, x1: now, y0: 0, y1: 1, yref: "paper", line: {color: css("--axis"), width: 1}}] : [],
+    annotations: inside ? [{x: now, y: 1, yref: "paper", text: "now", showarrow: false, xanchor: "left", yanchor: "top", font: {size: 11, color: css("--muted")}}] : []});
+  Plotly.react(target, traces, layout, CFG);
+  legend(legendId, [["Median", color, "line"], ["50 % range", alpha(color, 0.36)], ["80 % range", alpha(color, 0.16)], ["PSE reported", css("--obs"), "line"]]);
+}
+
+function dailyTable() {
+  const t = $("daily"); t.replaceChildren();
+  const rows = (D.live && D.live.daily || []).filter((r) => r.lead >= 1);
+  if (!rows.length) return;
+  const risk = Object.fromEntries((D.live.risk || []).map((r) => [r.day, r.p_low]));
+  const head = el("tr");
+  for (const h of ["Day", "Solar energy, GWh", "Solar peak, GW", "Wind energy, GWh", "Low wind + solar risk"]) head.append(el("th", {}, h));
+  const thead = el("thead"); thead.append(head); t.append(thead);
+  const tb = el("tbody");
+  const rng = (r, k, s = 1000, d = 0) => r[k + "_p50"] === undefined ? "–" : `${fmt(r[k + "_p50"] / s, d)} (${fmt(r[k + "_p10"] / s, d)}–${fmt(r[k + "_p90"] / s, d)})`;
+  for (const r of rows) {
+    const tr = el("tr");
+    tr.append(el("td", {}, dayLabel(r.day) + (r.lead === 1 ? " · tomorrow" : "")));
+    tr.append(el("td", {}, rng(r, "pv_mwh")));
+    tr.append(el("td", {}, r.pv_peak_mw_p50 === undefined ? "–" : fmt(r.pv_peak_mw_p50 / 1000)));
+    tr.append(el("td", {}, rng(r, "wind_mwh")));
+    tr.append(el("td", {}, r.day in risk ? fmt(risk[r.day] * 100, 0) + " %" : "–"));
+    tb.append(tr);
+  }
+  t.append(tb);
+}
+
+function recentChart(tech, target, legendId) {
+  const R = D.recent && D.recent[tech];
+  if (!R) { note(target, "Not available in this run."); return; }
+  const color = css(tech === "pv" ? "--pv" : "--wind");
+  const traces = [
+    {x: R.times, y: gw(R.q10), mode: "lines", line: {width: 0}, hoverinfo: "skip"},
+    {x: R.times, y: gw(R.q90), mode: "lines", line: {width: 0}, fill: "tonexty", fillcolor: alpha(color, 0.16), hoverinfo: "skip"},
+    {x: R.times, y: gw(R.q50), mode: "lines", line: {width: 2, color}, hovertemplate: "<b>%{y:.2f} GW</b> forecast median<extra></extra>"},
+    {x: R.times, y: gw(R.y), mode: "lines", line: {width: 1.5, color: css("--obs")}, hovertemplate: "<b>%{y:.2f} GW</b> PSE<extra></extra>"},
+  ];
+  Plotly.react(target, traces, baseLayout({yaxis: Object.assign(baseLayout().yaxis, {title: {text: "GW", font: {size: 11}}})}), CFG);
+  legend(legendId, [["Day-ahead median", color, "line"], ["80 % range", alpha(color, 0.2)], ["PSE reported", css("--obs"), "line"]]);
+}
+
+const PNAME = {multi: "Multi-model", ecmwf_ifs025: "ECMWF IFS", icon_seamless: "DWD ICON", gfs_seamless: "NOAA GFS"};
+
+function verification() {
+  const H = D.hindcast || [];
+  const meta = D.hindcast_meta || {};
+  const sub = $("verif-sub");
+  sub.textContent = H.length ? `Rolling-origin hindcast on archived model runs, ${meta.period || ""}: the method replayed day by day with only the data available each morning. nMAE is relative to mean generation (daylight hours for solar); CRPS skill is relative to a 30-day climatology; the 80 % range should contain 80 % of the observations.` : "Hindcast results are not available.";
+  const RM = (D.recent_metrics || []).filter((r) => r.lead === 1 && r.product === (D.recent && D.recent.product));
+  if (RM.length) {
+    const g = (t) => RM.find((r) => r.tech === t) || {};
+    sub.textContent += ` Last 30 days, day-ahead: solar nMAE ${fmt(g("pv").nmae_pct)} %, wind nMAE ${fmt(g("wind").nmae_pct)} %; ${fmt(g("pv").coverage80_pct, 0)} % and ${fmt(g("wind").coverage80_pct, 0)} % of hours inside the 80 % range.`;
+  }
+  const prod = meta.product || "multi";
+  const rows = H.filter((r) => r.product === prod);
+  const t = $("hc-table"); t.replaceChildren();
+  $("hc-title").textContent = `Hindcast scores, ${PNAME[prod] || prod}`;
+  if (rows.length) {
+    const group = el("tr"); group.append(el("th", {}, ""));
+    for (const g of ["Solar", "Wind"]) group.append(el("th", {colspan: "3", style: "text-align:center"}, g));
+    const head = el("tr");
+    for (const h of ["Lead", "nMAE", "CRPS skill", "In 80 %", "nMAE", "CRPS skill", "In 80 %"]) head.append(el("th", {}, h));
+    const thead = el("thead"); thead.append(group, head); t.append(thead);
+    const tb = el("tbody");
+    for (let lead = 1; lead <= 7; lead++) {
+      const pv = rows.find((r) => r.tech === "pv" && r.lead === lead) || {};
+      const wd = rows.find((r) => r.tech === "wind" && r.lead === lead) || {};
+      const tr = el("tr"); tr.append(el("td", {}, `D+${lead}`));
+      for (const r of [pv, wd]) {
+        tr.append(el("td", {}, r.nmae_pct === undefined ? "–" : fmt(r.nmae_pct) + " %"));
+        tr.append(el("td", {}, r.crpss_vs_clim_pct === undefined ? "–" : fmt(r.crpss_vs_clim_pct, 0) + " %"));
+        tr.append(el("td", {}, r.coverage80_pct === undefined ? "–" : fmt(r.coverage80_pct, 0) + " %"));
+      }
+      tb.append(tr);
+    }
+    t.append(tb);
+    const xs = [1, 2, 3, 4, 5, 6, 7];
+    const series = (tech) => xs.map((l) => { const r = rows.find((q) => q.tech === tech && q.lead === l); return r ? r.nmae_pct : null; });
+    Plotly.react("skill", [
+      {x: xs, y: series("pv"), mode: "lines+markers", line: {width: 2, color: css("--pv")}, marker: {size: 8, color: css("--pv"), line: {width: 2, color: css("--surface")}}, hovertemplate: "<b>%{y:.1f} %</b> solar<extra></extra>"},
+      {x: xs, y: series("wind"), mode: "lines+markers", line: {width: 2, color: css("--wind")}, marker: {size: 8, color: css("--wind"), line: {width: 2, color: css("--surface")}}, hovertemplate: "<b>%{y:.1f} %</b> wind<extra></extra>"},
+    ], baseLayout({xaxis: Object.assign(baseLayout().xaxis, {tickvals: xs, ticktext: xs.map((l) => "D+" + l), showspikes: false}),
+                   yaxis: Object.assign(baseLayout().yaxis, {title: {text: "nMAE, %", font: {size: 11}}})}), CFG);
+    legend("leg-skill", [["Solar", css("--pv"), "line"], ["Wind", css("--wind"), "line"]]);
+  } else { note("skill", "Not available."); }
+  const lb = $("live-box"); lb.replaceChildren();
+  const LM = D.live_metrics || [];
+  lb.append(el("h3", {}, "Live verification of the published ensemble forecast"));
+  if (!LM.length) { lb.append(el("p", {class: "sub"}, "Published forecasts are archived every day; scores appear here once the archive covers enough days.")); return; }
+  const tbl = el("table"); const hr = el("tr");
+  for (const h of ["Technology", "Days", "MAE, MW", "nMAE", "Mean pinball loss, MW", "In 80 % range"]) hr.append(el("th", {}, h));
+  const th = el("thead"); th.append(hr); tbl.append(th);
+  const tb = el("tbody");
+  for (const r of LM) {
+    const tr = el("tr");
+    for (const v of [r.tech === "pv" ? "Solar" : "Wind", fmt(r.days, 0), fmt(r.mae_mw, 0), fmt(r.nmae_pct) + " %", fmt(r.pinball_mw, 0), fmt(r.coverage80_pct, 0) + " %"]) tr.append(el("td", {}, v));
+    tb.append(tr);
+  }
+  tbl.append(tb); lb.append(tbl);
+}
+
+function rankText(r, n) { return `${r}${["th", "st", "nd", "rd"][(r % 100 > 10 && r % 100 < 14) ? 0 : Math.min(r % 10, 4) % 4] || "th"} of ${n}`; }
+
+let mapPeriod = "month";
+function climate() {
+  const C = D.climate;
+  if (!C) { note("clim-tiles", "Climate data are not available in this run."); $("clim-body").hidden = true; return; }
+  $("clim-body").hidden = false;
+  const Y = C.ytd;
+  const until = new Date(Y.until + "T12:00:00").toLocaleDateString("en-GB", {day: "numeric", month: "long"});
+  $("clim-sub").textContent = `ERA5 reanalysis, 1991 to ${new Date(C.data_until + "T12:00:00").toLocaleDateString("en-GB", {day: "numeric", month: "long", year: "numeric"})}. Anomalies against the 1991–2020 normal; national values are weighted by installed capacity.`;
+  const tb = $("clim-tiles"); tb.replaceChildren();
+  const sign = (v) => (v >= 100 ? "+" : "") + fmt(v - 100) + " %";
+  tb.append(tile(`Solar resource ${Y.year}, 1 Jan – ${until}`, sign(Y.pv_index_pct), "", `vs 1991–2020 · ${rankText(Y.pv_rank, Y.n_years)} sunniest since 1991`));
+  tb.append(tile(`Wind resource ${Y.year}, 1 Jan – ${until}`, sign(Y.wind_index_pct), "", `vs 1991–2020 · ${rankText(Y.wind_rank, Y.n_years)} windiest since 1991`));
+  const E = C.exceedance;
+  tb.append(tile("Solar P90 / P50", fmt(E.pv.p90_over_p50_pct), "%", `Year-to-year variability ${fmt(E.pv.sd_pct)} % (1 standard deviation)`));
+  tb.append(tile("Wind P90 / P50", fmt(E.wind.p90_over_p50_pct), "%", `Year-to-year variability ${fmt(E.wind.sd_pct)} % (1 standard deviation)`));
+  maps(); monthlyBars(); annual();
+}
+
+function divScale() { return [[0, css("--neg")], [0.5, css("--mid")], [1, css("--pos")]]; }
+
+function mapChart(target, values, label) {
+  const G = D.geojson; const codes = G.features.map((f) => f.properties.code);
+  const z = codes.map((c) => values[c] ?? null);
+  const lim = Math.max(5, ...z.filter((v) => v !== null).map((v) => Math.ceil(Math.abs(v))));
+  Plotly.react(target, [{type: "choropleth", geojson: G, featureidkey: "properties.code", locations: codes, z,
+    text: G.features.map((f) => f.properties.name), zmin: -lim, zmax: lim, colorscale: divScale(),
+    marker: {line: {color: css("--surface"), width: 1}},
+    colorbar: {thickness: 10, len: 0.8, ticksuffix: " %", tickfont: {color: css("--muted"), size: 11}, outlinewidth: 0},
+    hovertemplate: `<b>%{z:+.1f} %</b> ${label}<br>%{text}<extra></extra>`}],
+    Object.assign(baseLayout({margin: {l: 0, r: 0, t: 0, b: 0}, hovermode: "closest"}),
+      {geo: {fitbounds: "locations", visible: false, bgcolor: "rgba(0,0,0,0)", projection: {type: "mercator"}}}), CFG);
+}
+
+function maps() {
+  const C = D.climate; const M = C.maps;
+  const per = mapPeriod === "month" ? new Date(M.month + "-15").toLocaleDateString("en-GB", {month: "long", year: "numeric"}) : `${C.ytd.year} to date (to ${new Date(M.ytd_months[M.ytd_months.length - 1] + "-15").toLocaleDateString("en-GB", {month: "long"})})`;
+  $("map-ghi-title").textContent = `Solar irradiance anomaly, ${per}`;
+  $("map-wind-title").textContent = `Wind speed anomaly at 100 m, ${per}`;
+  mapChart("map-ghi", M["ghi_" + mapPeriod] || {}, "irradiance vs normal");
+  mapChart("map-wind", M["wind_" + mapPeriod] || {}, "wind speed vs normal");
+  mapTable();
+}
+
+function mapTable() {
+  const M = D.climate.maps; const t = $("map-table"); t.replaceChildren();
+  const head = el("tr");
+  for (const h of ["Voivodeship", "Irradiance, last month", "Wind, last month", "Irradiance, year to date", "Wind, year to date"]) head.append(el("th", {}, h));
+  const thead = el("thead"); thead.append(head); t.append(thead);
+  const tb = el("tbody");
+  const pct = (v) => v === undefined || v === null ? "–" : (v >= 0 ? "+" : "") + fmt(v) + " %";
+  for (const f of D.geojson.features) {
+    const c = f.properties.code; const tr = el("tr");
+    tr.append(el("td", {}, f.properties.name));
+    for (const k of ["ghi_month", "wind_month", "ghi_ytd", "wind_ytd"]) tr.append(el("td", {}, pct((M[k] || {})[c])));
+    tb.append(tr);
+  }
+  t.append(tb);
+}
+
+function monthlyBars() {
+  const N = D.climate.national;
+  const bars = (target, key, label) => {
+    const y = N[key];
+    Plotly.react(target, [{type: "bar", x: N.month, y, marker: {color: y.map((v) => v >= 0 ? css("--pos") : css("--neg"))},
+      hovertemplate: `<b>%{y:+.1f} %</b> ${label}<extra></extra>`}],
+      baseLayout({bargap: 0.25, yaxis: Object.assign(baseLayout().yaxis, {ticksuffix: " %", rangemode: "normal", zeroline: true, zerolinecolor: css("--axis")}),
+                  xaxis: Object.assign(baseLayout().xaxis, {showspikes: false})}), CFG);
+  };
+  bars("mon-ghi", "ghi_anom_pct", "irradiance vs normal");
+  bars("mon-wind", "wind_anom_pct", "wind speed vs normal");
+}
+
+function annual() {
+  const A = D.climate.annual; const E = D.climate.exceedance; const Y = D.climate.ytd;
+  const one = (target, key, idxKey, unit, color, ex, excId, label) => {
+    $(excId).textContent = `P50 ${fmt(ex.p50, 0)} ${unit} · P90 ${fmt(ex.p90, 0)} ${unit} (exceeded in 9 of 10 years) · generic fleet, today's layout`;
+    const traces = [{type: "bar", x: A.year, y: A[key], marker: {color}, width: 0.6,
+      customdata: A[idxKey], hovertemplate: `<b>%{y:,.0f} ${unit}</b><br>%{customdata:.1f} % of normal<extra>%{x}</extra>`}];
+    const shapes = [["P50", ex.p50], ["P90", ex.p90]].map(([n, v]) => ({type: "line", xref: "paper", x0: 0, x1: 1, y0: v, y1: v, line: {color: css("--ink-2"), width: 1, dash: n === "P90" ? "dot" : "solid"}}));
+    const ann = [["P50", ex.p50], ["P90", ex.p90]].map(([n, v]) => ({xref: "paper", x: 1, y: v, text: n, showarrow: false, xanchor: "left", yanchor: "middle", xshift: 4, font: {size: 11, color: css("--ink-2")}}));
+    const lo = Math.min(...A[key]) * 0.9, hi = Math.max(...A[key]) * 1.04;
+    Plotly.react(target, traces, baseLayout({shapes, annotations: ann, hovermode: "closest", bargap: 0.3, margin: {l: 52, r: 36, t: 8, b: 36},
+      yaxis: Object.assign(baseLayout().yaxis, {range: [lo, hi], rangemode: "normal", title: {text: unit, font: {size: 11}}}),
+      xaxis: Object.assign(baseLayout().xaxis, {showspikes: false})}), CFG);
+  };
+  one("ann-pv", "pv_kwh_kwp", "pv_index_pct", "kWh/kWp", css("--pv"), E.pv, "exc-pv");
+  one("ann-wind", "wind_flh", "wind_index_pct", "full-load h", css("--wind"), E.wind, "exc-wind");
+}
+
+function footer() {
+  const f = $("foot"); f.replaceChildren();
+  f.append(document.createTextNode("Independent open-source project by Konrad Waleszczyński. Forecasts are experimental and provided as is, without warranty. "));
+  f.append(el("a", {href: D.repo}, "Code and documentation on GitHub"));
+  f.append(document.createTextNode("."));
+}
+
+function drawAll() {
+  header(); kpis(); dailyTable(); footer();
+  if (!hasPlotly()) {
+    for (const id of ["fan-pv", "fan-wind", "recent-pv", "recent-wind", "skill", "map-ghi", "map-wind", "mon-ghi", "mon-wind", "ann-pv", "ann-wind"]) note(id, "Charts need the Plotly library, which could not be loaded. The tables still show the numbers.");
+    if (!D.climate) $("clim-body").hidden = true;
+    return;
+  }
+  const safe = (fn, ...a) => { try { fn(...a); } catch (e) { console.error(e); } };
+  if (D.live) { safe(fanChart, "pv", "fan-pv", "leg-pv"); safe(fanChart, "wind", "fan-wind", "leg-wind"); }
+  else { note("fan-pv", "The live forecast could not be produced in the latest run."); note("fan-wind", "The live forecast could not be produced in the latest run."); }
+  safe(recentChart, "pv", "recent-pv", "leg-rpv"); safe(recentChart, "wind", "recent-wind", "leg-rwind");
+  safe(verification); safe(climate);
+}
+
+for (const [id, per] of [["mp-month", "month"], ["mp-ytd", "ytd"]]) {
+  $(id).addEventListener("click", () => {
+    mapPeriod = per;
+    $("mp-month").setAttribute("aria-pressed", per === "month"); $("mp-ytd").setAttribute("aria-pressed", per === "ytd");
+    if (hasPlotly() && D.climate) maps();
+  });
+}
+function setTheme(t) { document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem("theme", t); } catch (e) {} $("theme").textContent = t === "dark" ? "Light mode" : "Dark mode"; drawAll(); }
+$("theme").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  setTheme(cur === "dark" ? "light" : "dark");
+});
+try { const t = localStorage.getItem("theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+if ((document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark") $("theme").textContent = "Light mode";
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+drawAll();
+</script>
+</body>
+</html>

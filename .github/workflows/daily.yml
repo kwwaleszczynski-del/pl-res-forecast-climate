@@ -1,0 +1,87 @@
+name: daily forecast
+
+# Runs the daily update and publishes the website to GitHub Pages.
+# The schedule is disabled; uncomment it to run every morning after the 00 UTC ensemble runs are available.
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "40 8 * * *"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily-forecast
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the forecast archive (absent on the first run)
+        uses: actions/checkout@v4
+        with:
+          ref: forecast-archive
+          path: archive
+        continue-on-error: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install .
+
+      - name: Restore cached downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: data-${{ github.run_id }}
+          restore-keys: data-
+
+      - name: Update forecast and website
+        run: python -m res_forecast update --site-dir site --archive-dir archive
+
+      - name: Save cached downloads
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: data-${{ github.run_id }}
+
+      - name: Push the forecast archive
+        if: always()
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [ -d archive/forecasts ] || exit 0
+          cd archive
+          if [ ! -d .git ]; then
+            git init -b forecast-archive
+            git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add forecasts
+          git diff --cached --quiet || git commit -m "Forecast archive $(date -u +%Y-%m-%d)"
+          git push origin HEAD:forecast-archive
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

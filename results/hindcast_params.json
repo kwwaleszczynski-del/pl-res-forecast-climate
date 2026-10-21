@@ -1,0 +1,12 @@
+{
+  "pv": {
+    "window": 60,
+    "inflate": 1.0
+  },
+  "wind": {
+    "window": 90,
+    "inflate": 1.0
+  },
+  "k_min": 0.5,
+  "tuned_on": "issues before 2025-10-01"
+}
