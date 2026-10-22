@@ -113,7 +113,7 @@ footer a { color: inherit; }
     <div class="card"><h3>Solar</h3><div class="legend" id="leg-pv"></div><div class="chart tall" id="fan-pv"></div></div>
     <div class="card"><h3>Wind</h3><div class="legend" id="leg-wind"></div><div class="chart tall" id="fan-wind"></div></div>
   </div>
-  <div class="card scroll" style="margin-top:12px"><table id="daily"></table></div>
+  <div class="card scroll" style="margin-top:12px" id="daily-card"><table id="daily"></table></div>
 </section>
 
 <section id="verification">
@@ -326,6 +326,7 @@ function fanChart(tech, target, legendId) {
 function dailyTable() {
   const t = $("daily"); t.replaceChildren();
   const rows = (D.live && D.live.daily || []).filter((r) => r.lead >= 1);
+  $("daily-card").hidden = !rows.length;
   if (!rows.length) return;
   const risk = Object.fromEntries((D.live.risk || []).map((r) => [r.day, r.p_low]));
   const head = el("tr");
