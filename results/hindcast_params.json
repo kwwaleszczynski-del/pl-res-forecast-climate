@@ -4,9 +4,9 @@
     "inflate": 1.0
   },
   "wind": {
-    "window": 90,
+    "window": 120,
     "inflate": 1.0
   },
-  "k_min": 0.5,
+  "k_min": 0.7,
   "tuned_on": "issues before 2025-10-01"
 }

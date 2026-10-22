@@ -159,7 +159,8 @@ def annual(clim: dict, path: Path):
         ax.bar(a.index, a[col], color=COL[tech], width=0.6)
         for name, v, ls in (("P50", ex["p50"], "-"), ("P90", ex["p90"], ":")):
             ax.axhline(v, color=COL["ink2"], lw=1, ls=ls)
-            ax.text(a.index.max() + 0.6, v, name, va="center", fontsize=8, color=COL["ink2"])
+            ax.text(a.index.max() + 1.0, v, name, va="bottom", fontsize=8, color=COL["ink2"])
+        ax.set_xlim(a.index.min() - 1, a.index.max() + 3.5)
         ax.set_ylim(a[col].min() * 0.92, a[col].max() * 1.03)
         ax.set_title(f"{NAME[tech]}: annual yield, {unit} (P90/P50 = {ex['p90_over_p50_pct']:.1f} %)", loc="left")
     fig.tight_layout()

@@ -37,13 +37,15 @@ def test_complete_months_are_cached_and_the_current_month_reused_while_fresh(tmp
     assert list(split_columns(df, "shortwave_radiation", 1).columns) == [0]
 
 
-def test_cached_only_skips_missing_and_partial_periods(tmp_path):
+def test_cached_only_skips_missing_months_and_uses_partial_ones(tmp_path):
     om = CountingOM()
     today = date(2025, 3, 15)
+    assert load_previous_runs(None, GRID, "ecmwf_ifs025", date(2025, 1, 1), today, tmp_path, today=today,
+                              cached_only=True).empty
     load_previous_runs(om, GRID, "ecmwf_ifs025", date(2025, 3, 1), today, tmp_path, today=today)
     out = load_previous_runs(None, GRID, "ecmwf_ifs025", date(2025, 1, 1), today, tmp_path, today=today,
                              cached_only=True)
-    assert out.empty
+    assert out.index.min() == pd.Timestamp("2025-03-01", tz="UTC")
 
 
 def test_era5_years(tmp_path):

@@ -173,9 +173,10 @@ footer a { color: inherit; }
     </ul>
     <h3>Calibration</h3>
     <p>For every model and lead day a regression maps the physical output onto PSE generation. It is refitted every
-    day on the last 60 days that were already observed, so it absorbs the fleet's growth, curtailment and model
-    biases. Errors of earlier out-of-sample forecasts, grouped by output level, give the forecast distribution; each
-    ensemble member is dressed with them, shrunk where the ensemble already spreads widely.</p>
+    day on the last 60 (solar) or 120 (wind) days that were already observed, so it absorbs the fleet's growth,
+    curtailment and model biases. Errors of earlier out-of-sample forecasts, grouped by output level, give the
+    forecast distribution; each ensemble member is dressed with its model's errors, shrunk where the ensemble already
+    spreads widely. Models are weighted by the inverse square of their recent error.</p>
     <h3>Verification</h3>
     <p>A rolling-origin hindcast replays the method on archived deterministic runs of the same three models
     (Open-Meteo Previous Runs API) from 2024, with no look-ahead: each day only data available that morning are
@@ -247,7 +248,7 @@ function header() {
   m.append(el("span", {}, "Updated " + gen.toLocaleString("en-GB", {timeZone: "Europe/Warsaw", dateStyle: "medium", timeStyle: "short"}) + " (Warsaw)"));
   if (D.live && D.live.members) {
     const n = Object.values(D.live.members).reduce((a, m) => a + Math.max(...Object.values(m)), 0);
-    m.append(el("span", {}, `${n} ensemble members`));
+    if (n > 0) m.append(el("span", {}, `${n} ensemble members`));
   }
   m.append(el("span", {}, `Installed: ${fmt(D.capacity_mw.pv / 1000, 1)} GW solar, ${fmt(D.capacity_mw.wind / 1000, 1)} GW wind`));
   const a = el("a", {href: D.repo}, "Source code"); m.append(a);
@@ -427,11 +428,11 @@ function climate() {
   $("clim-body").hidden = false;
   const Y = C.ytd;
   const until = new Date(Y.until + "T12:00:00").toLocaleDateString("en-GB", {day: "numeric", month: "long"});
-  $("clim-sub").textContent = `ERA5 reanalysis, 1991 to ${new Date(C.data_until + "T12:00:00").toLocaleDateString("en-GB", {day: "numeric", month: "long", year: "numeric"})}. Anomalies against the 1991–2020 normal; national values are weighted by installed capacity.`;
+  $("clim-sub").textContent = `Energy yield of today's fleet layout from the ERA5 reanalysis, 1991 to ${new Date(C.data_until + "T12:00:00").toLocaleDateString("en-GB", {day: "numeric", month: "long", year: "numeric"})}. Anomalies against the 1991–2020 normal; national values are weighted by installed capacity.`;
   const tb = $("clim-tiles"); tb.replaceChildren();
   const sign = (v) => (v >= 100 ? "+" : "") + fmt(v - 100) + " %";
-  tb.append(tile(`Solar resource ${Y.year}, 1 Jan – ${until}`, sign(Y.pv_index_pct), "", `vs 1991–2020 · ${rankText(Y.pv_rank, Y.n_years)} sunniest since 1991`));
-  tb.append(tile(`Wind resource ${Y.year}, 1 Jan – ${until}`, sign(Y.wind_index_pct), "", `vs 1991–2020 · ${rankText(Y.wind_rank, Y.n_years)} windiest since 1991`));
+  tb.append(tile(`Solar yield ${Y.year}, 1 Jan – ${until}`, sign(Y.pv_index_pct), "", `vs the 1991–2020 mean of the same period · ${rankText(Y.pv_rank, Y.n_years)} best year since 1991`));
+  tb.append(tile(`Wind yield ${Y.year}, 1 Jan – ${until}`, sign(Y.wind_index_pct), "", `vs the 1991–2020 mean of the same period · ${rankText(Y.wind_rank, Y.n_years)} best year since 1991`));
   const E = C.exceedance;
   tb.append(tile("Solar P90 / P50", fmt(E.pv.p90_over_p50_pct), "%", `Year-to-year variability ${fmt(E.pv.sd_pct)} % (1 standard deviation)`));
   tb.append(tile("Wind P90 / P50", fmt(E.wind.p90_over_p50_pct), "%", `Year-to-year variability ${fmt(E.wind.sd_pct)} % (1 standard deviation)`));

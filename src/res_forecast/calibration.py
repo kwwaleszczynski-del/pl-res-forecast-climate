@@ -11,7 +11,8 @@
 2. Error model: errors y - y_hat of earlier out-of-sample forecasts of the same lead (falling back to in-sample
    residuals at the start) are grouped by the predicted level, as a share of the window's peak output, and stored as
    empirical quantiles, optionally inflated by a factor tuned on the first hindcast year.
-3. Dressing: every calibrated member m gets the error distribution of its own model added, scaled by
+3. Dressing: models are weighted by the inverse square of their recent out-of-sample error, members of one model
+   share its weight, and every calibrated member m gets the error distribution of its own model added, scaled by
    ``k = sqrt(max(k_min^2, 1 - s^2 / sigma^2))`` where ``s`` is the spread of the calibrated members and ``sigma``
    the error standard deviation. With one member (k = 1) this is the plain statistical error model; when the
    ensemble already spreads as much as the typical error only ``k_min`` of the kernel is kept. The mixture is clipped
@@ -44,6 +45,12 @@ class MOS:
     resid_sd: np.ndarray        # (n_bins,)
     n_train: int = 0
     daily_resid_q: np.ndarray = field(default_factory=lambda: np.zeros(N_RESID))
+    err_mae: float = float("nan")  # mean absolute error behind the error distribution (model weighting)
+
+    @property
+    def weight(self) -> float:
+        """Inverse squared error, the model's weight in a multi-model ensemble."""
+        return 1.0 / self.err_mae ** 2 if self.err_mae > 0 else 0.0
 
     def predict(self, x, feats=None) -> np.ndarray:
         x = np.asarray(x, dtype=float)
@@ -115,6 +122,7 @@ def fit_mos(x: np.ndarray, y: np.ndarray, tech: str, feats: np.ndarray | None = 
                 full = np.isfinite(oh) & np.isfinite(oy)
                 days = (np.asarray(oos_days)[full], oy[full] - oh[full])
     mos.resid_q, mos.resid_sd = _residual_bins(inflate * (y_obs - y_hat), mos.level_bin(y_hat), n_bins)
+    mos.err_mae = float(np.mean(np.abs(y_obs - y_hat)))
     if days is not None:
         di, r = days
         _, inv = np.unique(di, return_inverse=True)

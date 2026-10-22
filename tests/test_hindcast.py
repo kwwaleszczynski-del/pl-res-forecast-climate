@@ -21,8 +21,10 @@ def synthetic(days=150, seed=0):
 def test_hindcast_is_calibrated_on_synthetic_data():
     phys, y = synthetic()
     rows = run_hindcast(phys, y, window=30, techs=("wind",), leads=[1, 2])
-    s = summarize(rows).set_index("lead")
-    assert set(rows["product"]) == {"ecmwf_ifs025"}
+    s = summarize(rows[rows["product"] == "ecmwf_ifs025"]).set_index("lead")
+    assert set(rows["product"]) == {"ecmwf_ifs025", "multi"}  # with one model the published product equals it
+    m = rows[rows["product"] == "multi"]
+    np.testing.assert_allclose(m["q50"].to_numpy(), rows[rows["product"] == "ecmwf_ifs025"]["q50"].to_numpy())
     assert 70 < s.loc[1, "coverage80_pct"] < 90
     assert s.loc[1, "crps_mw"] < s.loc[2, "crps_mw"]  # longer lead, noisier forecast
     assert s.loc[1, "crpss_vs_clim_pct"] > 0
@@ -39,12 +41,16 @@ def test_no_look_ahead():
     np.testing.assert_allclose(a["q50"].to_numpy(), b["q50"].to_numpy())
 
 
-def test_multi_model_product_present_with_two_models():
+def test_multi_model_product_weights_the_better_model():
     phys, y = synthetic()
-    other = phys["ecmwf_ifs025"] * 1.1
-    rows = run_hindcast({"ecmwf_ifs025": phys["ecmwf_ifs025"], "icon_seamless": other}, y, window=30,
+    rng = np.random.default_rng(5)
+    noisy = phys["ecmwf_ifs025"] + rng.normal(0, 800, phys["ecmwf_ifs025"].shape)
+    rows = run_hindcast({"ecmwf_ifs025": phys["ecmwf_ifs025"], "icon_seamless": noisy}, y, window=30,
                         techs=("wind",), leads=[1])
     assert {"ecmwf_ifs025", "icon_seamless", "multi"} <= set(rows["product"])
+    s = summarize(rows).set_index("product")
+    # the skill weighting keeps the combination close to the good model, far from the noisy one
+    assert s.loc["multi", "mae_mw"] < 0.5 * (s.loc["ecmwf_ifs025", "mae_mw"] + s.loc["icon_seamless", "mae_mw"])
 
 
 def test_calibrations_at_returns_one_fit_per_model_and_lead():

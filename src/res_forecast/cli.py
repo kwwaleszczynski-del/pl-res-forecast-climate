@@ -36,7 +36,7 @@ from res_forecast.history import load_era5_daily, load_era5_hourly, load_previou
 from res_forecast.openmeteo import OpenMeteo, RateLimiter
 from res_forecast.pse import fetch_generation
 from res_forecast.site import build_payload, render
-from res_forecast.verify import summarize as verify_summary
+from res_forecast.verify import evaluable, summarize as verify_summary
 
 log = logging.getLogger("res_forecast")
 DEFAULT_PARAMS = {"pv": {"window": 60, "inflate": 1.0}, "wind": {"window": 60, "inflate": 1.0}, "k_min": K_MIN}
@@ -125,7 +125,8 @@ def cmd_hindcast(args):
     issue = pd.to_datetime(rows["ts"]).dt.tz_convert("UTC").dt.normalize() - pd.to_timedelta(rows["lead"], unit="D")
     test = rows[issue >= pd.Timestamp(split, tz="UTC")]
     summary = verify_summary(test)
-    summary.insert(0, "period", f"{test['ts'].min():%Y-%m-%d}..{test['ts'].max():%Y-%m-%d}")
+    ev = evaluable(test)
+    summary.insert(0, "period", f"{ev['ts'].min():%Y-%m-%d}..{ev['ts'].max():%Y-%m-%d}")
     summary.to_csv(args.results_dir / "hindcast_summary.csv", index=False, float_format="%.3f")
     by_month = verify_summary(test.assign(month=pd.to_datetime(test["ts"]).dt.strftime("%Y-%m")),
                               by=("product", "tech", "lead", "month"))
@@ -198,7 +199,7 @@ def cmd_update(args):
     params = load_params(args.results_dir)
     grid = build_grid()
     weights = capacity_weights(grid)
-    om = _om(args, max_wait=args.max_wait)
+    om = None if args.offline else _om(args, max_wait=args.max_wait)
     now = pd.Timestamp.now(tz="UTC")
     today = now.tz_convert(TZ).date()
     max_window = max(params[t]["window"] for t in TECHS)
@@ -214,7 +215,7 @@ def cmd_update(args):
     phys, calibs = {}, {}
     try:
         phys = load_physical(om, args.data_dir, grid, weights, today - timedelta(days=2 * max_window + 20),
-                             today + timedelta(days=1), models=args.models)
+                             today + timedelta(days=1), models=args.models, cached_only=args.offline)
         for tech in TECHS:
             c = calibrations_at(phys, actual, today, window=params[tech]["window"], inflate=params[tech]["inflate"])
             calibs.update({k: v for k, v in c.items() if k[1] == tech})
@@ -227,7 +228,9 @@ def cmd_update(args):
     if calibs:
         try:
             cache = args.data_dir / "live_members.pkl"
-            if args.reuse_members and cache.exists():
+            if args.offline and not cache.exists():
+                raise RuntimeError("offline run without cached ensemble members")
+            if (args.reuse_members or args.offline) and cache.exists():
                 with open(cache, "rb") as f:
                     saved = pickle.load(f)  # our own file from an earlier run today
                 if saved["day"] != today.isoformat():
@@ -273,7 +276,7 @@ def cmd_update(args):
     clim = None
     try:
         base = load_base(args.results_dir / "climate")
-        cur = load_era5_daily(om, grid, base["last_year"] + 1, today, args.data_dir / "era5")
+        cur = load_era5_daily(om, grid, base["last_year"] + 1, today, args.data_dir / "era5", cached_only=args.offline)
         tables = base["tables"]
         if len(cur):
             tables = extend(tables, base_tables(cur, grid, weights, base["gain"], base["curve"]))
@@ -323,6 +326,8 @@ def main(argv=None):
             p.add_argument("--max-wait", type=float, default=900.0, help="longest wait for the API rate limit, s")
             p.add_argument("--min-live-days", type=int, default=7, help="days of archive before live scores show")
             p.add_argument("--readme-images", action="store_true", help="also redraw docs/img/forecast_fan.png")
+            p.add_argument("--offline", action="store_true",
+                           help="no Open-Meteo requests: cached runs, ERA5 and ensemble members only (for re-rendering)")
             p.add_argument("--reuse-members", action="store_true",
                            help="reuse today's downloaded ensemble members (data/live_members.pkl) instead of fetching")
             p.add_argument("--models", nargs="+", default=list(HINDCAST_MODELS),

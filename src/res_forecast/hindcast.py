@@ -5,8 +5,8 @@ of day I-1 is published by PSE by the morning of day I) using the archived lead-
 applied to the lead-N forecast for day I+N. Products evaluated:
 
     ecmwf / icon / gfs   one deterministic model, dressed with its own error distribution (k = 1)
-    multi                the available models as a small multi-model ensemble with spread-dependent dressing,
-                         i.e. the same code path as the live 122-member ensemble
+    multi                the available models as a small multi-model ensemble (weighted by recent skill) with
+                         spread-dependent dressing, i.e. the same code path as the live 122-member ensemble
 
 Reference forecasts: persistence (same hour of day I-1) and a probabilistic climatology (the same hour of the
 30 days up to I-1).
@@ -146,11 +146,13 @@ def run_hindcast(phys: dict[str, pd.DataFrame], actual: pd.DataFrame, window: in
                 variants = []
                 if "single" in products:
                     variants += [(m, [m]) for m in fitted]
-                if "multi" in products and len(fitted) > 1:
-                    variants.append(("multi", list(fitted)))
+                if "multi" in products:
+                    variants.append(("multi", list(fitted)))  # the published product, even when one model is left
                 for name, ms in variants:
                     members = np.vstack([fitted[m][1] for m in ms])
-                    samples, weights = dressing_samples(members, [fitted[m][0] for m in ms], k_min=k_min)
+                    mw = np.array([fitted[m][0].weight for m in ms])
+                    samples, weights = dressing_samples(members, [fitted[m][0] for m in ms],
+                                                        mw if mw.sum() > 0 else None, k_min=k_min)
                     q = weighted_quantiles(samples, weights, OUT_LEVELS)
                     crps = crps_sample(samples, weights, np.nan_to_num(y))
                     ok = np.isfinite(members).any(axis=0) & np.isfinite(y)

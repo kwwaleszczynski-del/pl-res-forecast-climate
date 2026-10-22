@@ -39,7 +39,7 @@ def load_previous_runs(om: OpenMeteo | None, grid: pd.DataFrame, model: str, sta
                        today: date | None = None, cached_only: bool = False) -> pd.DataFrame:
     """Archived runs of ``model`` (variables and leads from HINDCAST_MODELS); columns '<point>|<var>|<lead>'.
 
-    With ``cached_only`` months that are not cached are skipped instead of downloaded.
+    With ``cached_only`` nothing is downloaded: missing months are skipped, a partial month is used at any age.
     """
     today = today or date.today()
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -50,10 +50,10 @@ def load_previous_runs(om: OpenMeteo | None, grid: pd.DataFrame, model: str, sta
         complete = m_end < today - timedelta(days=1)
         if cache.exists() and complete:
             df = pd.read_parquet(cache)
+        elif not complete and (_fresh(partial) or (cached_only and partial.exists())):
+            df = pd.read_parquet(partial)
         elif cached_only:
             continue
-        elif not complete and _fresh(partial):
-            df = pd.read_parquet(partial)
         else:
             df = om.previous_runs(grid, model, HINDCAST_MODELS[model], m_start, min(m_end, today + timedelta(days=1)))
             df.to_parquet(cache if complete else partial)
@@ -77,10 +77,10 @@ def _load_era5_years(om: OpenMeteo | None, grid: pd.DataFrame, first_year: int, 
         complete = date(year, 12, 31) <= today - timedelta(days=ERA5_LAG_DAYS)
         if cache.exists() and complete:
             df = pd.read_parquet(cache)
+        elif not complete and (_fresh(partial) or (cached_only and partial.exists())):
+            df = pd.read_parquet(partial)
         elif cached_only:
             continue
-        elif not complete and _fresh(partial):
-            df = pd.read_parquet(partial)
         else:
             kw = {"daily": variables} if kind == "daily" else {"hourly": variables}
             df = om.era5(grid, date(year, 1, 1), y_end, **kw)

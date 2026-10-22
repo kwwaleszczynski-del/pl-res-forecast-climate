@@ -2,8 +2,9 @@
 
 Members of ECMWF IFS ENS (51), DWD ICON-EPS (40) and NOAA GEFS (31) are converted to national PV and wind output,
 each member is calibrated with the MOS of its model's deterministic sibling for the lead day of the hour, and the
-members are dressed (see calibration.py). Every model gets the same total weight. GEFS has no hub-height wind and is
-used for PV only; ICON-EPS wind ends after about five days.
+members are dressed (see calibration.py). Each model's members share a weight proportional to the inverse square of
+the model's recent out-of-sample error. GEFS has no hub-height wind and is used for PV only; ICON-EPS wind ends after
+about five days.
 
 If an ensemble request fails, the deterministic run of the same model (one member) is used instead, and if that
 fails too, the model is left out; the page shows which sources were used.
@@ -101,7 +102,7 @@ def day_fraction(times: pd.DatetimeIndex) -> np.ndarray:
 
 
 def _member_set(raw: dict, calibs: dict, tech: str, lead: int, hours: np.ndarray, feats):
-    """Calibrated members (M, H), their MOS list and weights for one tech and lead (equal weight per model)."""
+    """Calibrated members (M, H), their MOS list, member weights and model names for one tech and lead."""
     blocks, mos_list, w, names = [], [], [], []
     models = [m for m in raw if tech in raw[m] and (m, tech, lead) in calibs]
     for m in models:
@@ -112,7 +113,8 @@ def _member_set(raw: dict, calibs: dict, tech: str, lead: int, hours: np.ndarray
         blocks.append(mos.predict(x, None if feats is None else feats[hours]))
         mos_list += [mos] * x.shape[0]
         names += [m] * x.shape[0]
-        w.append(np.full(x.shape[0], 1.0 / x.shape[0]))
+        model_w = mos.weight if np.isfinite(mos.weight) and mos.weight > 0 else 1.0
+        w.append(np.full(x.shape[0], model_w / x.shape[0]))
     if not blocks:
         return None, [], None, []
     return np.vstack(blocks), mos_list, np.concatenate(w), names
