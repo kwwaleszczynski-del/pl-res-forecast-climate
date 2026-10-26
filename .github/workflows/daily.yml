@@ -1,11 +1,11 @@
 name: daily forecast
 
-# Runs the daily update and publishes the website to GitHub Pages.
-# The schedule is disabled; uncomment it to run every morning after the 00 UTC ensemble runs are available.
+# Runs the daily update and publishes the website to GitHub Pages, every morning after the 00 UTC ensemble runs
+# are available on Open-Meteo.
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: "40 8 * * *"
+  schedule:
+    - cron: "40 8 * * *"
 
 permissions:
   contents: write

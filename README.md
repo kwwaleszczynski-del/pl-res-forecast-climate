@@ -176,7 +176,7 @@ tables that let the daily run fetch only the current year.
 
 **Automation.** `.github/workflows/daily.yml` runs `update` and deploys `site/` to GitHub Pages. Issued forecasts
 are appended to a separate `forecast-archive` branch, so the main branch does not grow; the archive feeds the live
-verification on the page. The workflow's cron line is commented out until scheduling is switched on.
+verification on the page. It runs every day at 08:40 UTC, after the 00 UTC ensemble runs are available.
 
 ## Data and licences
 
