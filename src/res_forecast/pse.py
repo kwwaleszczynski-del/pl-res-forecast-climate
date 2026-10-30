@@ -1,8 +1,10 @@
 """Actual wind and solar generation in the Polish power system from the public PSE reports API.
 
 Endpoint ``his-wlk-cal`` ("wielkości podstawowe") of https://api.raporty.pse.pl/api gives 15-minute system totals,
-including ``wi`` (wind) and ``pv`` (solar) in MW, from 14 Jun 2024. ``dtime_utc`` is the END of the 15-minute
-interval. Data for a day are usually published one to two days later.
+including ``wi`` (wind) and ``pv`` (solar) in MW, from 14 Jun 2024. Data for a day are usually published one to two
+days later and revised for up to about a month. The data are read with the pse-opendata client
+(https://pypi.org/project/pse-opendata/), which caches whole months as Parquet files and downloads a month again until
+the revision window of the report (60 days) has passed.
 
 Hourly values are means of the four quarter-hours ending at the hour, labelled with the hour END in UTC, which is the
 same convention as Open-Meteo's hourly radiation (mean over the preceding hour).
@@ -13,30 +15,24 @@ Usage:
 from __future__ import annotations
 
 import logging
-import time
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
-import requests
+import pse_opendata as pse
 
-BASE_URL = "https://api.raporty.pse.pl/api"
 ENDPOINT = "his-wlk-cal"
 FIRST_DAY = date(2024, 6, 14)
 log = logging.getLogger(__name__)
 
 
-def parse_records(records: list[dict]) -> pd.DataFrame:
-    """15-minute frame indexed by interval END (UTC) with columns pv, wind (MW)."""
-    if not records:
+def to_frame(raw: pd.DataFrame) -> pd.DataFrame:
+    """pse-opendata frame -> 15-minute frame indexed by interval END (UTC) with columns pv, wind (MW)."""
+    if raw.empty:
         return pd.DataFrame(columns=["pv", "wind"], dtype="float64").rename_axis("ts_utc")
-    df = pd.DataFrame.from_records(records)
-    out = pd.DataFrame({
-        "ts_utc": pd.to_datetime(df["dtime_utc"]).dt.tz_localize("UTC").dt.as_unit("ns"),
-        "pv": pd.to_numeric(df["pv"], errors="coerce"),
-        "wind": pd.to_numeric(df["wi"], errors="coerce"),
-    })
-    return out.drop_duplicates("ts_utc").set_index("ts_utc").sort_index()
+    out = pd.DataFrame({"pv": raw["pv"].to_numpy(), "wind": raw["wi"].to_numpy()},
+                       index=pd.DatetimeIndex(raw["end_utc"], name="ts_utc"))
+    return out.sort_index()
 
 
 def to_hourly(q: pd.DataFrame) -> pd.DataFrame:
@@ -48,56 +44,18 @@ def to_hourly(q: pd.DataFrame) -> pd.DataFrame:
     return out[g.count().min(axis=1) == 4]
 
 
-def _get(session: requests.Session, url: str, params: dict | None = None, retries: int = 4) -> dict:
-    for attempt in range(retries):
-        try:
-            r = session.get(url, params=params, timeout=60)
-            r.raise_for_status()
-            return r.json()
-        except requests.RequestException as e:
-            if attempt == retries - 1:
-                raise
-            log.warning("PSE API request failed (%s), retrying", e)
-            time.sleep(3 * 2 ** attempt)
-    raise RuntimeError("unreachable")
-
-
-def fetch_period(start: date, end: date, session: requests.Session | None = None) -> pd.DataFrame:
-    """15-minute pv/wind for business dates start..end (inclusive), following pagination links."""
-    session = session or requests.Session()
-    session.headers.setdefault("User-Agent", "pl-res-forecast-climate (open-source research project)")
-    params = {
-        "$filter": f"business_date ge '{start:%Y-%m-%d}' and business_date le '{end:%Y-%m-%d}'",
-        "$select": "dtime_utc,pv,wi,business_date",
-        "$first": 20000,
-    }
-    payload = _get(session, f"{BASE_URL}/{ENDPOINT}", params)
-    records = list(payload.get("value", []))
-    while payload.get("nextLink"):
-        payload = _get(session, payload["nextLink"])
-        records += payload.get("value", [])
-    return parse_records(records)
-
-
 def fetch_generation(start: date, end: date, cache_dir: Path, refresh: bool = False) -> pd.DataFrame:
-    """Hourly pv/wind (MW) for start..end; complete past months are cached as Parquet."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    """Hourly pv/wind (MW) for start..end, month by month through the pse-opendata cache in ``cache_dir``."""
     start = max(start, FIRST_DAY)
-    session = requests.Session()
+    client = pse.Client(cache_dir=cache_dir, refresh=refresh)
     frames = []
     for month_start in pd.date_range(date(start.year, start.month, 1), end, freq="MS"):
         m_end = (month_start + pd.offsets.MonthEnd(0)).date()
-        cache = cache_dir / f"pse_{month_start:%Y-%m}.parquet"
-        complete = m_end < date.today() - pd.Timedelta(days=3)
-        if cache.exists() and not refresh and complete:
-            df = pd.read_parquet(cache)
-        else:
-            df = to_hourly(fetch_period(max(month_start.date(), FIRST_DAY), min(m_end, end), session))
-            if complete:
-                df.to_parquet(cache)
-            log.info("PSE %s: %d hours", f"{month_start:%Y-%m}", len(df))
+        raw = client.get(ENDPOINT, month_start.date(), m_end, fields=["pv", "wi"])
+        df = to_hourly(to_frame(raw[raw["business_date"] <= end]))
+        log.info("PSE %s: %d hours", f"{month_start:%Y-%m}", len(df))
         frames.append(df)
-    out = pd.concat(frames).sort_index() if frames else to_hourly(parse_records([]))
+    out = pd.concat(frames).sort_index() if frames else to_hourly(to_frame(pd.DataFrame()))
     lo = pd.Timestamp(start, tz="UTC")
     hi = pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)
     return out[(out.index > lo - pd.Timedelta(hours=2)) & (out.index <= hi + pd.Timedelta(hours=2))]

@@ -7,7 +7,7 @@ name = "pl-res-forecast-climate"
 version = "0.1.0"
 description = "Probabilistic day-ahead to week-ahead wind and solar generation forecast for Poland from open ensemble weather forecasts, verified against PSE data, plus an ERA5 resource climatology."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "numpy>=1.26",
@@ -17,6 +17,7 @@ dependencies = [
     "requests>=2.31",
     "pvlib>=0.11",
     "matplotlib>=3.8",
+    "pse-opendata>=0.2,<0.3",
 ]
 
 [project.optional-dependencies]

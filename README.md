@@ -187,7 +187,7 @@ verification on the page. It runs every day at 08:40 UTC, after the 00 UTC ensem
 | ICON / ICON-EPS | Deutscher Wetterdienst, via Open-Meteo | DWD open data, attribution |
 | GFS / GEFS | NOAA NCEP, via Open-Meteo | US government public domain |
 | ERA5 reanalysis | Copernicus Climate Change Service (C3S), via Open-Meteo | Contains modified Copernicus Climate Change Service information; neither the European Commission nor ECMWF is responsible for any use |
-| Wind and solar generation | [PSE S.A.](https://raporty.pse.pl/) reports API (`his-wlk-cal`) | public reports, attribution |
+| Wind and solar generation | [PSE S.A.](https://raporty.pse.pl/) reports API (`his-wlk-cal`), read with [pse-opendata](https://pypi.org/project/pse-opendata/) | public reports, attribution |
 | Installed capacity | [URE](https://www.ure.gov.pl/) "Mapa OZE", 30 Jun 2026 (voivodeship sums only) | public information |
 | Population | GUS, 31 Dec 2025 | public statistics |
 | Voivodeship borders | [Natural Earth](https://www.naturalearthdata.com/) 1:10m admin-1 | public domain |
