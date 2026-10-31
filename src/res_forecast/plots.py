@@ -59,7 +59,8 @@ def fan(live, actual: pd.DataFrame | None, path: Path):
         ax.set_ylabel("GW")
         ax.set_ylim(bottom=0)
         ax.set_title(f"{NAME[tech]}, issued {live.issue.tz_convert(TZ):%d %b %Y %H:%M}", loc="left")
-        ax.legend(loc="upper left", ncols=4, fontsize=8.5)
+        # above the plot, right of the title, so it never covers a peak
+        ax.legend(loc="lower right", bbox_to_anchor=(1, 1), ncols=4, fontsize=8.5, borderaxespad=0.1)
     axes[1].xaxis.set_major_formatter(mdates.DateFormatter("%a %d %b"))
     fig.tight_layout()
     _save(fig, path)
@@ -83,10 +84,12 @@ def hindcast_skill(summary: pd.DataFrame, path: Path, products=("multi", "ecmwf_
     axes[2].set_title("Share inside the 80 % range, %", loc="left")
     axes[2].axhline(80, color=COL["ink2"], lw=1)
     axes[2].set_ylim(60, 90)
+    leads = sorted(int(x) for x in summary["lead"].unique())
     for ax in axes:
-        ax.set_xticks(range(1, 8), [f"D+{i}" for i in range(1, 8)])
-    axes[0].legend(fontsize=8)
-    fig.tight_layout()
+        ax.set_xticks(leads, [f"D+{i}" for i in leads])
+        ax.set_xlim(leads[0] - 0.3, leads[-1] + 0.3)
+    fig.legend(*axes[0].get_legend_handles_labels(), loc="lower center", ncols=4, fontsize=8.5)
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     _save(fig, path)
 
 
@@ -105,7 +108,7 @@ def hindcast_example(rows: pd.DataFrame, product: str, start, days: int, path: P
         ax.set_ylabel("GW")
         ax.set_ylim(bottom=0)
         ax.set_title(f"{NAME[tech]}: day-ahead hindcast vs PSE", loc="left")
-        ax.legend(loc="upper left", ncols=3, fontsize=8.5)
+        ax.legend(loc="lower right", bbox_to_anchor=(1, 1), ncols=3, fontsize=8.5, borderaxespad=0.1)
     axes[1].xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
     fig.tight_layout()
     _save(fig, path)
