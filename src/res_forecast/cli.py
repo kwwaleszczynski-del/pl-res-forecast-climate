@@ -28,10 +28,10 @@ from res_forecast.archive import COLS, live_verification, load_archive, save_for
 from res_forecast.calibration import K_MIN
 from res_forecast.climate import base_tables, daily_wind_curve, extend, load_base, pv_gain, save_base, summarize
 from res_forecast.config import (CLIMATE_START_YEAR, ERA5_HOURLY_YEARS, HINDCAST_MODELS, HINDCAST_START,
-                                  MULTI_MODEL_START, TEST_START, TZ)
+                                  MULTI_MODEL_START, TEST_END, TEST_START, TZ)
 from res_forecast.forecast import Live, fetch_members, run_live
 from res_forecast.geo import build_grid, capacity_weights
-from res_forecast.hindcast import TECHS, calibrations_at, load_physical, run_hindcast
+from res_forecast.hindcast import TECHS, as_of, calibrations_at, load_physical, run_hindcast
 from res_forecast.history import load_era5_daily, load_era5_hourly, load_previous_runs
 from res_forecast.openmeteo import OpenMeteo, RateLimiter
 from res_forecast.pse import fetch_generation
@@ -83,7 +83,9 @@ def cmd_hindcast(args):
     weights = capacity_weights(grid)
     today = date.today()
     actual = fetch_generation(HINDCAST_START, today, args.data_dir / "pse")
-    phys = load_physical(None, args.data_dir, grid, weights, HINDCAST_START, today, cached_only=True)
+    phys = load_physical(None, args.data_dir, grid, weights, HINDCAST_START, args.test_end, cached_only=True,
+                         temperature=False)
+    phys = {m: as_of(f) for m, f in phys.items()}
     log.info("models with archived runs: %s", ", ".join(phys))
     split = args.split
     params = json.loads(json.dumps(DEFAULT_PARAMS))
@@ -136,7 +138,8 @@ def cmd_hindcast(args):
         ["product", "tech", "lead", "nmae_pct", "crps_mw", "crpss_vs_clim_pct", "coverage80_pct"]].round(1).to_string())
     prod = "multi" if (summary["product"] == "multi").any() else "ecmwf_ifs025"
     plots.hindcast_skill(summary, args.img_dir / "hindcast_skill.png", products=(prod, "ecmwf_ifs025"))
-    w = actual["wind"][actual.index >= pd.Timestamp(split, tz="UTC")]
+    w = actual["wind"][(actual.index >= pd.Timestamp(split, tz="UTC")) &
+                       (actual.index < pd.Timestamp(args.test_end + timedelta(days=1), tz="UTC"))]
     start = w.rolling("10D").std().idxmax() - pd.Timedelta(days=10)
     plots.hindcast_example(rows, prod, start.normalize(), 10, args.img_dir / "hindcast_example.png")
 
@@ -255,7 +258,11 @@ def cmd_update(args):
 
     recent, recent_metrics = None, None
     try:
-        parts = [run_hindcast(phys, actual, window=params[t]["window"], inflate=params[t]["inflate"],
+        # same as-of runs as the hindcast (the calibration above may use every archived run: all are in the past)
+        recent_phys = load_physical(None, args.data_dir, grid, weights, today - timedelta(days=2 * max_window + 20),
+                                    today + timedelta(days=1), models=args.models, cached_only=True, temperature=False)
+        recent_phys = {m: as_of(f) for m, f in recent_phys.items()}
+        parts = [run_hindcast(recent_phys, actual, window=params[t]["window"], inflate=params[t]["inflate"],
                               k_min=params["k_min"], techs=(t,), first_issue=today - timedelta(days=30),
                               last_issue=today - timedelta(days=1)) for t in TECHS]
         recent = pd.concat(parts, ignore_index=True)
@@ -315,6 +322,8 @@ def main(argv=None):
             p.add_argument("--tune", action="store_true", help="choose window/inflation/k_min on the tuning period")
             p.add_argument("--split", type=date.fromisoformat, default=TEST_START,
                            help="issues before this date tune the method, later ones are the test period")
+            p.add_argument("--test-end", type=date.fromisoformat, default=TEST_END,
+                           help="last day of the archived runs used, i.e. of the test period")
             p.add_argument("--windows", type=int, nargs="+", default=[45, 60, 90])
             p.add_argument("--inflates", type=float, nargs="+", default=[1.0, 1.1, 1.2])
             p.add_argument("--k-mins", type=float, nargs="+", default=[0.3, 0.5, 0.7, 1.0])

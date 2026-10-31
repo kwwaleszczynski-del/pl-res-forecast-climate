@@ -179,8 +179,10 @@ footer a { color: inherit; }
     spreads widely. Models are weighted by the inverse square of their recent error.</p>
     <h3>Verification</h3>
     <p>A rolling-origin hindcast replays the method on archived deterministic runs of the same three models
-    (Open-Meteo Previous Runs API) from 2024, with no look-ahead: each day only data available that morning are
-    used. Scores: MAE of the median, CRPS of the full distribution and the share of observations inside the 80 %
+    (Open-Meteo Previous Runs API) from 2024, with no look-ahead: each day only observations and model runs available
+    at the 08:40 UTC issue time are used. The archive keeps, for each hour, the run started a whole number of days
+    earlier, so most hours of a D+N forecast come from a run of the day before the issue day: the hindcast is
+    conservative, and D+7 is not scored. Scores: MAE of the median, CRPS of the full distribution and the share of observations inside the 80 %
     range. Archived ensemble members are not available, so the hindcast tests a three-member multi-model ensemble;
     the live ensemble is verified from the archive of published forecasts as it grows.</p>
     <h3>Resource climate</h3>
@@ -383,7 +385,8 @@ function verification() {
     for (const h of ["Lead", "nMAE", "CRPS skill", "In 80 %", "nMAE", "CRPS skill", "In 80 %"]) head.append(el("th", {}, h));
     const thead = el("thead"); thead.append(group, head); t.append(thead);
     const tb = el("tbody");
-    for (let lead = 1; lead <= 7; lead++) {
+    const leads = [1, 2, 3, 4, 5, 6, 7].filter((l) => rows.some((r) => r.lead === l));
+    for (const lead of leads) {
       const pv = rows.find((r) => r.tech === "pv" && r.lead === lead) || {};
       const wd = rows.find((r) => r.tech === "wind" && r.lead === lead) || {};
       const tr = el("tr"); tr.append(el("td", {}, `D+${lead}`));
@@ -395,7 +398,7 @@ function verification() {
       tb.append(tr);
     }
     t.append(tb);
-    const xs = [1, 2, 3, 4, 5, 6, 7];
+    const xs = leads;
     const series = (tech) => xs.map((l) => { const r = rows.find((q) => q.tech === tech && q.lead === l); return r ? r.nmae_pct : null; });
     Plotly.react("skill", [
       {x: xs, y: series("pv"), mode: "lines+markers", line: {width: 2, color: css("--pv")}, marker: {size: 8, color: css("--pv"), line: {width: 2, color: css("--surface")}}, hovertemplate: "<b>%{y:.1f} %</b> solar<extra></extra>"},

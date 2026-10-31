@@ -1,8 +1,9 @@
-"""Rolling-origin hindcast of the D+1..D+7 forecasts on archived model runs, with no look-ahead.
+"""Rolling-origin hindcast of the D+1..D+6 forecasts on archived model runs, with no look-ahead.
 
 For every issue day I and lead N the calibration is fitted on the ``window`` days up to I-1 (the actual generation
 of day I-1 is published by PSE by the morning of day I) using the archived lead-N forecasts for those days, and then
-applied to the lead-N forecast for day I+N. Products evaluated:
+applied to the lead-N forecast for day I+N. :func:`as_of` first restricts the archived runs to those published by
+the 08:40 UTC issue time; D+7 would need an eight-day archive and is not scored. Products evaluated:
 
     ecmwf / icon / gfs   one deterministic model, dressed with its own error distribution (k = 1)
     multi                the available models as a small multi-model ensemble (weighted by recent skill) with
@@ -12,7 +13,8 @@ Reference forecasts: persistence (same hour of day I-1) and a probabilistic clim
 30 days up to I-1).
 
 Usage:
-    phys = load_physical(data_dir, grid, weights, end)        # national physical output per model and lead
+    phys = load_physical(om, data_dir, grid, weights, start, end, temperature=False)  # national MW per model, lead
+    phys = {m: as_of(f) for m, f in phys.items()}             # only runs published by the issue time
     hc = run_hindcast(phys, actual, window=60, k_min=0.5)     # one row per (product, tech, lead, hour)
 """
 from __future__ import annotations
@@ -25,7 +27,7 @@ import numpy as np
 import pandas as pd
 
 from res_forecast.calibration import K_MIN, crps_sample, dressing_samples, fit_mos, weighted_quantiles
-from res_forecast.config import HINDCAST_MODELS, HINDCAST_START, LEADS
+from res_forecast.config import HINDCAST_MODELS, HINDCAST_START, ISSUE_HOUR_UTC, LEADS, RUN_DELAY_H
 from res_forecast.history import load_previous_runs, split_columns
 from res_forecast.openmeteo import OpenMeteo
 from res_forecast.physical import is_daylight, physical_from_runs, solar_features
@@ -37,16 +39,41 @@ CLIM_DAYS = 30
 
 
 def load_physical(om: OpenMeteo | None, data_dir: Path, grid: pd.DataFrame, weights: pd.DataFrame, start: date,
-                  end: date, models=tuple(HINDCAST_MODELS), cached_only: bool = False) -> dict[str, pd.DataFrame]:
-    """National physical output for each archived model ({model: frame with columns 'tech|lead'})."""
+                  end: date, models=tuple(HINDCAST_MODELS), cached_only: bool = False,
+                  temperature: bool = True) -> dict[str, pd.DataFrame]:
+    """National physical output for each archived model ({model: frame with columns 'tech|lead'}).
+
+    With ``temperature=False`` the PV model uses monthly climatological air temperature instead of the archived
+    day-1 temperature, whose runs start after the issue time for almost every hour (used by the hindcast).
+    """
     runs = {m: load_previous_runs(om, grid, m, start, end, data_dir / "runs", cached_only=cached_only) for m in models}
     runs = {m: r for m, r in runs.items() if len(r)}
-    temp = split_columns(runs["ecmwf_ifs025"], "temperature_2m", 1) if "ecmwf_ifs025" in runs else None
+    temp = None
+    if temperature and "ecmwf_ifs025" in runs:
+        temp = split_columns(runs["ecmwf_ifs025"], "temperature_2m", 1)
     out = {}
     for m, r in runs.items():
         out[m] = physical_from_runs(r, m, grid, weights, temp=temp)
         log.info("physical output %s: %d hours, %d series", m, len(out[m]), out[m].shape[1])
     return out
+
+
+def as_of(phys: pd.DataFrame, issue_hour: float = ISSUE_HOUR_UTC, delay_h: float = RUN_DELAY_H) -> pd.DataFrame:
+    """Rebuild the 'tech|N' columns from runs that were published by the issue time.
+
+    The Previous Runs API serves for each valid hour t the run started N x 24 h before t (or the latest one before
+    that). For the forecast of day I+N issued at ``issue_hour`` UTC on day I this run starts at day I + hour(t), so
+    it is only out for the first hours of the day; every later hour takes the N+1 column, a run started on day I-1.
+    A lead whose N+1 column is not archived is dropped.
+    """
+    fresh = phys.index.hour.to_numpy() + delay_h <= issue_hour
+    out = {}
+    for col in phys.columns:
+        tech, lead = col.split("|")
+        older = f"{tech}|{int(lead) + 1}"
+        if older in phys.columns:
+            out[col] = np.where(fresh, phys[col].to_numpy(), phys[older].to_numpy())
+    return pd.DataFrame(out, index=phys.index)
 
 
 def _day_numbers(index: pd.DatetimeIndex) -> np.ndarray:

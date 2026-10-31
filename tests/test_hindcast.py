@@ -3,7 +3,8 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from res_forecast.hindcast import calibrations_at, run_hindcast
+from res_forecast.config import ISSUE_HOUR_UTC, RUN_DELAY_H
+from res_forecast.hindcast import as_of, calibrations_at, run_hindcast
 from res_forecast.verify import summarize
 
 
@@ -58,3 +59,18 @@ def test_calibrations_at_returns_one_fit_per_model_and_lead():
     c = calibrations_at(phys, y, date(2025, 5, 1), window=30, leads=[1, 2])
     assert set(c) == {("ecmwf_ifs025", "wind", 1), ("ecmwf_ifs025", "wind", 2)}
     assert c[("ecmwf_ifs025", "wind", 1)].coef[0] > 1.5
+
+
+def test_as_of_uses_only_runs_published_by_the_issue_time():
+    """Previous Runs column N at valid time t comes from a run started t - N days; it must be out by 08:40 UTC."""
+    idx = pd.date_range("2025-06-01", periods=24 * 5, freq="h", tz="UTC")
+    phys = pd.DataFrame({f"pv|{n}": float(n) for n in (1, 2, 3)}, index=idx)
+    out = as_of(phys)
+    assert list(out.columns) == ["pv|1", "pv|2"]  # pv|3 would need a four-day column
+    for col in out.columns:
+        lead = int(col.split("|")[1])
+        used = out[col].to_numpy().astype(int)                       # the archived lead each hour came from
+        run_start = idx - pd.to_timedelta(used, unit="D")
+        issue = idx.normalize() - pd.Timedelta(days=lead) + pd.Timedelta(hours=ISSUE_HOUR_UTC)
+        assert (run_start + pd.Timedelta(hours=RUN_DELAY_H) <= issue).all()
+        assert set(used[idx.hour < 2]) == {lead} and set(used[idx.hour >= 2]) == {lead + 1}

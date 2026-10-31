@@ -15,12 +15,14 @@ context (anomaly maps, "how was this year for renewables", P50/P90 of annual yie
 
 ## Key results
 
-- **Day-ahead accuracy** over a 12-month out-of-sample test (Oct 2025 - Sep 2026): solar nMAE **10.5 %**, wind nMAE
-  **17.7 %** of mean generation; the probabilistic forecast beats a 30-day climatology by **60 %** (solar) and
-  **68 %** (wind) in CRPS, and **82 %** of observed hours fall inside the published 80 % range.
-- **Multi-model beats single-model**: for solar the skill-weighted combination of ECMWF, ICON and GFS is 10 % better
+- **Day-ahead accuracy** over a 12-month out-of-sample test (Oct 2025 - Sep 2026), using only model runs published
+  by the 08:40 UTC issue time: solar nMAE **11.3 %**, wind nMAE **19.8 %** of mean generation; the probabilistic
+  forecast beats a 30-day climatology by **57 %** (solar) and **65 %** (wind) in CRPS, and **84 %** (solar) and
+  **82 %** (wind) of observed hours fall inside the published 80 % range. The hindcast uses runs up to 18 h older
+  than the live forecast does, so these are conservative.
+- **Multi-model beats single-model**: for solar the skill-weighted combination of ECMWF, ICON and GFS is 9 % better
   in CRPS than ECMWF alone; for wind it matches ECMWF and fixes its too-narrow range (77 % -> 82 % coverage).
-- **Useful horizon**: wind skill falls to 30 % at D+5 and 8 % at D+7; solar still has 22 % skill at D+7.
+- **Useful horizon**: wind skill falls to 17 % at D+5 and 9 % at D+6; solar still has 23 % skill at D+6.
 - **2026 so far** (to 15 Oct): the sunniest year but one since 1991 (+6.7 % solar yield) and a weak wind year
   (-6.7 %, 26th of 36), with a calm, bright March (-19 % wind speed, +17 % irradiance).
 - **Year-to-year risk**: P90/P50 of annual yield is **96.5 %** for solar and **90.3 %** for wind (1991-2025);
@@ -67,53 +69,69 @@ PSE his-wlk-cal (actual wind & PV) ───────────────
 
 ## Verification
 
-A **rolling-origin hindcast** replays the whole method day by day on archived model runs (Open-Meteo Previous
-Runs API: the forecast for every hour as it was issued 1 to 7 days earlier) and scores it against PSE generation.
-Each morning only data available by then are used: the calibration window ends the day before the issue day and the
-error distribution comes from forecasts that had already been verified. A test in `tests/test_hindcast.py` checks that
-changing future observations does not change past forecasts.
+A **rolling-origin hindcast** replays the whole method day by day on archived deterministic runs (Open-Meteo
+Previous Runs API) and scores it against PSE generation. Each morning only data available at the 08:40 UTC issue
+time are used:
 
-Window lengths, error inflation and `k_min` were chosen on issues before 1 October 2025 (ECMWF from June 2024, ICON
-and GFS from March 2025); the scores below are for the following **twelve months, 02 Oct 2025 to
-30 Sep 2026**, which played no part in the tuning. Solar is scored on daylight hours. nMAE is the
+- **Model runs.** For a valid hour the API's `*_previous_dayN` variable is the value predicted N x 24 h earlier,
+  i.e. from the run started about N days before that hour (checked against ECMWF IFS single runs). For the D+N
+  forecast of a valid hour after 01 UTC this is a 06, 12 or 18 UTC run of the issue day, published after 08:40.
+  With a run counted as published 7 h after its start (Open-Meteo states 4-6 h for global models; the rule of
+  [pl-forecast-bench](https://github.com/kwwaleszczynski-del/pl-forecast-bench)), the hindcast takes the D+N value
+  for 00-01 UTC and the (N+1)-day value, a run of the day before the issue day, for every later hour
+  (`hindcast.as_of`, tested in `tests/test_hindcast.py`). This is conservative: for those hours the live forecast
+  uses the 00 UTC run of the issue day, 6 to 18 h younger. D+7 would need an eight-day archive and is not scored.
+  The archived day-1 temperature has the same timing problem, so the hindcast PV model uses monthly climatological
+  air temperature. (The daily calibration of the live forecast fits on past days only, whose runs were all
+  published by then.)
+- **Observations.** The calibration window ends the day before the issue day and the error distribution comes from
+  forecasts that had already been verified. A test checks that changing future observations does not change past
+  forecasts.
+
+Window lengths (60 days for solar, 90 for wind), error inflation and `k_min` were chosen on issues before 1 October
+2025 (ECMWF from June 2024, ICON and GFS from March 2025); the scores below are for the following **twelve months,
+02 Oct 2025 to 30 Sep 2026**, which played no part in the tuning. Solar is scored on daylight hours. nMAE is the
 mean absolute error of the median relative to mean generation; the CRPS skill score compares the full distribution
 with a 30-day hourly climatology; the 80 % range should contain 80 % of the observations.
 
 | Lead | Solar nMAE | Solar CRPS skill | Solar in 80 % range | Wind nMAE | Wind CRPS skill | Wind in 80 % range |
 |---|---|---|---|---|---|---|
-| D+1 | 10.5 % | 60 % | 82 % | 17.7 % | 68 % | 82 % |
-| D+2 | 11.5 % | 58 % | 83 % | 20.1 % | 64 % | 82 % |
-| D+3 | 13.3 % | 53 % | 82 % | 25.7 % | 54 % | 82 % |
-| D+4 | 14.7 % | 48 % | 82 % | 32.2 % | 43 % | 82 % |
-| D+5 | 17.1 % | 41 % | 82 % | 39.8 % | 30 % | 81 % |
-| D+6 | 20.5 % | 30 % | 82 % | 48.5 % | 16 % | 78 % |
-| D+7 | 23.2 % | 22 % | 79 % | 52.3 % | 8 % | 79 % |
+| D+1 | 11.3 % | 57 % | 84 % | 19.8 % | 65 % | 82 % |
+| D+2 | 13.1 % | 52 % | 83 % | 24.9 % | 55 % | 81 % |
+| D+3 | 14.5 % | 48 % | 83 % | 31.7 % | 44 % | 81 % |
+| D+4 | 16.6 % | 41 % | 83 % | 38.7 % | 31 % | 81 % |
+| D+5 | 20.0 % | 31 % | 83 % | 47.6 % ¹ | 17 % ¹ | 79 % ¹ |
+| D+6 | 22.7 % | 23 % | 79 % | 52.3 % ¹ | 9 % ¹ | 78 % ¹ |
+
+¹ Multi-model wind at these leads is ECMWF alone (the scores equal the ECMWF row): GFS has no hub-height wind and
+ICON's archived 80 m wind reaches D+4 under the as-of rule. In the live forecast the same holds at D+6 and D+7,
+because the ICON-EPS ensemble carries 80 m wind for about five days.
 
 ![hindcast skill](docs/img/hindcast_skill.png)
 
-- **Day-ahead**: solar MAE 523 MW on a mean of 5.0 GW, wind 429 MW on
+- **Day-ahead**: solar MAE 564 MW on a mean of 5.0 GW, wind 480 MW on
   2.4 GW. Against persistence (the same hour of the last observed day) the median cuts the
-  error by 63 % for solar and 74 % for wind.
-- **Skill fades with lead time** as weather predictability does: wind is useful to about five days (CRPS skill
-  30 % at D+5, 8 % at D+7); solar keeps
-  22 % skill at D+7 because the daily cycle is known in advance.
-- **The ranges are calibrated**: 78-83 % of observations fall inside the published 80 % range at every lead.
-  A single model dressed with its own errors is too narrow (76-79 %); the spread between models carries real
+  error by 60 % for solar and 71 % for wind.
+- **Skill fades with lead time** as weather predictability does: wind is useful to about four or five days (CRPS
+  skill 31 % at D+4, 17 % at D+5); solar keeps 23 % skill at D+6 because the daily cycle is known in advance.
+- **The ranges are calibrated**: 78-84 % of observations fall inside the published 80 % range at every lead.
+  A single model dressed with its own errors is too narrow (75-79 %); the spread between models carries real
   information about uncertainty.
-- **Seasons**: solar day-ahead nMAE is 9-11 % from April to October and 15-18 % from November to February (snow on
-  modules, fog and low sun). Wind errors are similar in MW all year, so they are larger in relative terms in the
-  calmer summer months.
+- **Seasons**: solar day-ahead nMAE is 10-12 % from March to October and 16-22 % from November to February (snow on
+  modules, fog and low sun). Wind errors are of the same order in MW all year (300-650 MW a month), so they are larger
+  in relative terms in the calmer months from April to September (20-27 % against 14-16 % from October to
+  January).
 
 | Day-ahead (D+1) | Solar CRPS, MW | Solar in 80 % range | Wind CRPS, MW | Wind in 80 % range |
 |---|---|---|---|---|
-| **Multi-model (published)** | 377 | 82 % | 310 | 82 % |
-| ECMWF IFS only | 419 | 76 % | 306 | 77 % |
-| DWD ICON only | 394 | 76 % | 389 | 77 % |
-| NOAA GFS only | 503 | 76 % | n/a | n/a |
+| **Multi-model (published)** | 405 | 84 % | 346 | 82 % |
+| ECMWF IFS only | 443 | 77 % | 348 | 77 % |
+| DWD ICON only | 436 | 76 % | 419 | 77 % |
+| NOAA GFS only | 521 | 76 % | n/a | n/a |
 
 The multi-model combination beats every single model for solar and matches the best single model (ECMWF) for wind
-while widening its too-narrow range. The inverse-error weighting matters: with equal weights the weaker ICON 80 m
-wind made the day-ahead wind CRPS 4 % worse than ECMWF alone.
+while widening its too-narrow range. ICON's 80 m wind is the weakest wind input (D+1 CRPS 419 against 348 MW for
+ECMWF), which is why the models are weighted by their recent error rather than equally.
 
 ![hindcast example](docs/img/hindcast_example.png)
 
@@ -203,6 +221,10 @@ This project is independent and not affiliated with or endorsed by any of these 
 - Archived ensemble members are not available, so the hindcast verifies a three-member multi-model ensemble of the
   deterministic runs, not the live 122-member ensemble. The live forecast is verified separately as its archive
   grows.
+- The Previous Runs archive does not keep whole runs, so the as-of hindcast takes most hours from a run of the day
+  before the issue day and understates the skill of a forecast from the 00 UTC run; D+7 is not scored. The Open-Meteo
+  Single Runs API keeps whole runs, but rebuilding the hindcast on it would need about 100 000 weighted calls (ten
+  days of the free tier).
 - The hindcast starts in mid-2024 (PSE data), ICON and GFS runs from March 2025, so rare extremes are
   under-sampled.
 - The annual yields use generic equipment and today's fleet layout; they describe the resource, not the output of a
@@ -221,6 +243,13 @@ src/res_forecast/
   site.py         static website (templates/index.html)       plots.py       README charts
 tools/build_static_data.py   builds the capacity table and borders from URE and Natural Earth
 ```
+
+## Changes
+
+- 2026-10-31: the hindcast used the archived `previous_dayN` values as they are, which for most hours come from
+  runs started after the 08:40 UTC issue time; that inflated the day-ahead CRPS skill (solar 60 % instead of 57 %,
+  wind 68 % instead of 65 %) and the reported skill at every lead. It now applies the as-of rule above, scores
+  D+1 to D+6, uses climatological temperature for PV and was re-tuned (wind window 90 instead of 120 days).
 
 ## License
 

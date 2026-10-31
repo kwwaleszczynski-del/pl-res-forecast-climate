@@ -28,6 +28,11 @@ WIND_HEIGHT = {"wind_speed_100m": 100.0, "wind_speed_80m": 80.0, "wind_speed_10m
 HINDCAST_START = date(2024, 6, 14)  # first day of PSE his-wlk-cal data
 MULTI_MODEL_START = date(2025, 3, 1)  # ICON and GFS runs are archived from here (keeps the download within API limits)
 TEST_START = date(2025, 10, 1)  # issues before this tune the method, later ones are the reported test period
+TEST_END = date(2026, 9, 30)  # last verified day of the reported twelve-month test
+# As-of rule of the hindcast: forecasts are issued at 08:40 UTC (the daily workflow) and a model run counts as
+# published 7 h after its initialisation (Open-Meteo states 4-6 h for global models; the rule of pl-forecast-bench).
+ISSUE_HOUR_UTC = 8 + 40 / 60
+RUN_DELAY_H = 7.0
 CLIMATE_START_YEAR = 1991
 NORMAL_PERIOD = (1991, 2020)
 ERA5_DAILY = ["shortwave_radiation_sum", "wind_speed_100m_mean"]
